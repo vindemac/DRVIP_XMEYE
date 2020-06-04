@@ -13,6 +13,7 @@ using System.Numerics;
 using System.ServiceModel.Channels;
 using System.Text;
 using System.Threading;
+using System.Xml;
 using XmEyePersonalCloud;
 
 // Client app is the one sending messages to a Server/listener.   
@@ -115,6 +116,17 @@ public class SocketClient
         byte[] end = { (byte)0 };
         return Concat(Concat(StructConverter.Pack(ob), message), end);
     }
+    public void keepalive(Socket socket)
+    {
+        Console.WriteLine(
+            "ServerClass.InstanceMethod is running on another thread.");
+
+        // Pause for a moment to provide a delay to make
+        // threads more apparent.
+        Thread.Sleep(3000);
+        Console.WriteLine(
+            "The instance method called by the worker thread has ended.");
+    }
     public static void StartClient()  
     {  
         byte[] bytes = new byte[1024];  
@@ -127,7 +139,7 @@ public class SocketClient
             // If a host has multiple addresses, you will get a list of addresses
  
      
-            IPAddress ipAddress = System.Net.IPAddress.Parse("192.168.1.72");
+            IPAddress ipAddress = System.Net.IPAddress.Parse("179.66.255.173");
             IPEndPoint remoteEP = new IPEndPoint(ipAddress, 34567);
  
             // Create a TCP/IP  socket.    
@@ -147,7 +159,27 @@ public class SocketClient
     
                 // Receive the response from the remote device.    
                 int bytesRec = sender.Receive(bytes);
-                toFile(bytes, "login.txt");
+                //toFile(bytes, "login.txt");
+                using (var fs = new FileStream("C:\\Projects\\login.txt", FileMode.OpenOrCreate, FileAccess.ReadWrite))
+                {
+                    while ((bytesRec = sender.Receive(bytes)) > 0)
+                    {
+
+                        fs.Write(bytes, 0, bytesRec);
+                        if (bytesRec < 1024)
+                        { 
+                            break;
+                        }
+                    }
+                }
+
+
+                Thread StaticCaller = new Thread(new ThreadStart(keepAlive(sender)));
+
+                // Start the thread.
+                StaticCaller.Start();
+
+
 
                 JObject o = parseJson(bytes);
                 dvrip.Session = o.SelectToken("SessionID").ToString();
@@ -157,14 +189,25 @@ public class SocketClient
 
                 bytesSent = sender.Send(PrepareStatement(MessageType.OPMonitor, dvrip.Session.ToString().Substring(2), dvrip.OpMonitor("Claim"), 24));
                 /// Receive the response from the remote device.    
-                bytes = new byte[4096];
+                bytes = new byte[1024];
                 bytesRec = sender.Receive(bytes);
-                toFile(bytes,"opmonitor.txt");
+                //toFile(bytes,"opmonitor.txt");
+                using (var fs = new FileStream("C:\\Projects\\opmonitor.txt", FileMode.OpenOrCreate, FileAccess.ReadWrite))
+                {
+                    while ((bytesRec = sender.Receive(bytes)) > 0)
+                    {
 
-                /*
+                        fs.Write(bytes, 0, bytesRec);
+                        if (bytesRec < 1024)
+                        {
+                            break;
+                        }
+                    }
+                }
+
                 bytesSent = sender.Send(PrepareStatement(MessageType.OPFileQuery, dvrip.Session.ToString().Substring(2), dvrip.OPFileQuery(), 152));
                 /// Receive the response from the remote device.    
-                bytes = new byte[40960];
+                bytes = new byte[1024];
                 bytesRec = sender.Receive(bytes); 
                 using (var fs = new FileStream("C:\\Projects\\filequery.txt", FileMode.OpenOrCreate, FileAccess.ReadWrite))
                 {
@@ -172,11 +215,11 @@ public class SocketClient
                     {
 
                         fs.Write(bytes, 0, bytesRec);
-                        if (bytesRec < 4096) {
+                        if (bytesRec < 1024) {
                             break;
                         }
                     }
-                }*/
+                }
                 ///------------start
                 bytesSent = sender.Send(PrepareStatement(MessageType.OPPlayback, dvrip.Session.ToString().Substring(2), dvrip.DownloadStart(), 64));
                 /// Receive the response from the remote device.
@@ -199,7 +242,7 @@ public class SocketClient
                 /// Receive the response from the remote device.
 
                 byte[] buffer2 = new byte[4096];
-                using (var fs = new FileStream("C:\\Projects\\stop.mp4", FileMode.OpenOrCreate, FileAccess.ReadWrite))
+                using (var fs = new FileStream("C:\\Projects\\stop.txt", FileMode.OpenOrCreate, FileAccess.ReadWrite))
                 {
                     while ((read = sender.Receive(buffer2)) > 0)
                     {
@@ -259,9 +302,22 @@ public class SocketClient
 
             Console.WriteLine(e.ToString());  
         }  
-    } 
-        // The port number for the remote device.  
-        private const int port = 34567;
+    }
+
+    public static void keepAlive(Socket socket)
+    {
+        while (socket.Connected)
+        {
+            socket.Send(PrepareStatement(MessageType.KeepAlive, dvrip.Session.ToString().Substring(2), dvrip.KeepAlive(), 24));
+            byte[] buffer = new byte[1024];
+            int read = socket.Receive(buffer);
+            Console.WriteLine("Echoed test = {0}", Encoding.ASCII.GetString(buffer, 0, buffer.Length));
+            Thread.Sleep(20000);
+        }
+    }
+
+    // The port number for the remote device.  
+    private const int port = 34567;
 
         // ManualResetEvent instances signal completion.  
         private static ManualResetEvent connectDone =
